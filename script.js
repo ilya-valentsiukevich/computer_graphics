@@ -1,11 +1,49 @@
 const WHITE_COLOR = "#ffffff";
 const BLACK_COLOR = "#000000";
+const RED_COLOR = "#ff0000";
+const GREEN_COLOR = "#00ff00";
 
 const SPACE_SEPARATOR = " ";
 const SLASH_SEPARATOR = "/";
 
 const GEOMETRIC_VERTICES = "v ";
 const POLYGONAL_FACES = "f ";
+
+const intensityToHexColor = (intensity) => {
+  intensity = Math.floor(intensity);
+  const clampedIntensity = Math.max(0, Math.min(intensity, 255));
+  const hexString = clampedIntensity.toString(16).padStart(2, "0");
+  return `#${hexString.repeat(3)}`;
+};
+
+const crossProduct = (v1, v2) => {
+  const x = v1.y * v2.z - v1.z * v2.y;
+  const y = v1.z * v2.x - v1.x * v2.z;
+  const z = v1.x * v2.y - v1.y * v2.x;
+
+  return { x, y, z };
+};
+
+const dotProduct = (v1, v2) => {
+  return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+};
+
+const substractVectors = (v1, v2) => {
+  const x = v1.x - v2.x;
+  const y = v1.y - v2.y;
+  const z = v1.z - v2.z;
+
+  return { x, y, z };
+};
+
+const normalize = (v) => {
+  const magnitude = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  const x = v.x / magnitude;
+  const y = v.y / magnitude;
+  const z = v.z / magnitude;
+
+  return { x, y, z };
+};
 
 class Model {
   constructor(parser) {
@@ -123,6 +161,35 @@ const drawLine = (x0, y0, x1, y1, ctx, color) => {
   }
 };
 
+const drawLineV2 = (v0, v1, ctx, color) => {
+  drawLine(v0.x, v0.y, v1.x, v1.y, ctx, color);
+};
+
+const drawTriangle = (t0, t1, t2, ctx, color) => {
+  if (t0.y == t1.y && t0.y == t2.y) return;
+
+  if (t0.y > t1.y) [t0, t1] = [t1, t0];
+  if (t0.y > t2.y) [t0, t2] = [t2, t0];
+  if (t1.y > t2.y) [t1, t2] = [t2, t1];
+
+  const totalHeight = t2.y - t0.y;
+
+  for (let i = 0; i < totalHeight; i++) {
+    const isSecondHalf = i > t1.y - t0.y || t1.y == t0.y;
+    const segmentHeight = isSecondHalf ? t2.y - t1.y : t1.y - t0.y;
+    const alpha = i / totalHeight;
+    const beta = (i - (isSecondHalf ? t1.y - t0.y : 0)) / segmentHeight;
+    let A = t0.x + (t2.x - t0.x) * alpha;
+    let B = isSecondHalf
+      ? t1.x + (t2.x - t1.x) * beta
+      : t0.x + (t1.x - t0.x) * beta;
+    if (A > B) [A, B] = [B, A];
+    for (let x = A; x <= B; x++) {
+      drawPixel(x, t0.y + i, ctx, color);
+    }
+  }
+};
+
 const drawModel = (model) => {
   const canvas = document.createElement("canvas");
   canvas.width = 800;
@@ -138,19 +205,42 @@ const drawModel = (model) => {
   ctx.translate(0, height);
   ctx.scale(1, -1);
 
+  const lightDir = { x: 0, y: 0, z: -1 };
+
   for (let i = 0; i < model.faces.length; i++) {
     const face = model.faces[i];
 
+    const screenCoordinates = [];
+    const worldCoordinates = [];
+
     for (let j = 0; j < 3; j++) {
-      const v0 = model.vertices[face[j].vertexIndex];
-      const v1 = model.vertices[face[(j + 1) % 3].vertexIndex];
+      const vertex = model.vertices[face[j].vertexIndex];
 
-      const x0 = (v0.x + 1) * halfWidth;
-      const y0 = (v0.y + 1) * halfHeight;
-      const x1 = (v1.x + 1) * halfWidth;
-      const y1 = (v1.y + 1) * halfHeight;
+      const x = (vertex.x + 1) * halfWidth;
+      const y = (vertex.y + 1) * halfHeight;
 
-      drawLine(x0, y0, x1, y1, ctx, BLACK_COLOR);
+      screenCoordinates.push({ x, y });
+      worldCoordinates.push(vertex);
+    }
+
+    const intensity = dotProduct(
+      normalize(
+        crossProduct(
+          substractVectors(worldCoordinates[2], worldCoordinates[0]),
+          substractVectors(worldCoordinates[1], worldCoordinates[0])
+        )
+      ),
+      lightDir
+    );
+
+    if (intensity > 0) {
+      drawTriangle(
+        screenCoordinates[0],
+        screenCoordinates[1],
+        screenCoordinates[2],
+        ctx,
+        intensityToHexColor(intensity * 255)
+      );
     }
   }
 };
