@@ -2,6 +2,7 @@ const WHITE_COLOR = "#ffffff";
 const BLACK_COLOR = "#000000";
 const RED_COLOR = "#ff0000";
 const GREEN_COLOR = "#00ff00";
+const BLUE_COLOR = "#0000ff";
 
 const SPACE_SEPARATOR = " ";
 const SLASH_SEPARATOR = "/";
@@ -32,6 +33,22 @@ const substractVectors = (v1, v2) => {
   const x = v1.x - v2.x;
   const y = v1.y - v2.y;
   const z = v1.z - v2.z;
+
+  return { x, y, z };
+};
+
+const sumVectors = (v1, v2) => {
+  const x = v1.x + v2.x;
+  const y = v1.y + v2.y;
+  const z = v1.z + v2.z;
+
+  return { x, y, z };
+};
+
+const multipleVectorByScalar = (v, n) => {
+  const x = v.x * n;
+  const y = v.y * n;
+  const z = v.z * n;
 
   return { x, y, z };
 };
@@ -165,7 +182,7 @@ const drawLineV2 = (v0, v1, ctx, color) => {
   drawLine(v0.x, v0.y, v1.x, v1.y, ctx, color);
 };
 
-const drawTriangle = (t0, t1, t2, ctx, color) => {
+const drawTriangle = (t0, t1, t2, ctx, color, zBuffer) => {
   if (t0.y == t1.y && t0.y == t2.y) return;
 
   if (t0.y > t1.y) [t0, t1] = [t1, t0];
@@ -179,13 +196,33 @@ const drawTriangle = (t0, t1, t2, ctx, color) => {
     const segmentHeight = isSecondHalf ? t2.y - t1.y : t1.y - t0.y;
     const alpha = i / totalHeight;
     const beta = (i - (isSecondHalf ? t1.y - t0.y : 0)) / segmentHeight;
-    let A = t0.x + (t2.x - t0.x) * alpha;
+    let A = sumVectors(
+      t0,
+      multipleVectorByScalar(substractVectors(t2, t0), alpha)
+    );
     let B = isSecondHalf
-      ? t1.x + (t2.x - t1.x) * beta
-      : t0.x + (t1.x - t0.x) * beta;
-    if (A > B) [A, B] = [B, A];
-    for (let x = A; x <= B; x++) {
-      drawPixel(x, t0.y + i, ctx, color);
+      ? sumVectors(t1, multipleVectorByScalar(substractVectors(t2, t1), beta))
+      : sumVectors(t0, multipleVectorByScalar(substractVectors(t1, t0), beta));
+
+    if (A.x > B.x) [A, B] = [B, A];
+
+    for (let x = A.x; x <= B.x; x++) {
+      const phi = B.x == A.x ? 1 : (x - A.x) / (B.x - A.x);
+      const P = sumVectors(
+        A,
+        multipleVectorByScalar(substractVectors(B, A), phi)
+      );
+
+      P.x |= 0;
+      P.y |= 0;
+      P.z |= 0;
+
+      const index = P.x + P.y * ctx.canvas.clientWidth;
+
+      if (zBuffer[index] < P.z) {
+        zBuffer[index] = P.z;
+        drawPixel(x, t0.y + i, ctx, color);
+      }
     }
   }
 };
@@ -207,6 +244,11 @@ const drawModel = (model) => {
 
   const lightDir = { x: 0, y: 0, z: -1 };
 
+  const zBuffer = [];
+  for (let i = 0; i < width * height; i++) {
+    zBuffer.push(-Math.min());
+  }
+
   for (let i = 0; i < model.faces.length; i++) {
     const face = model.faces[i];
 
@@ -218,8 +260,9 @@ const drawModel = (model) => {
 
       const x = (vertex.x + 1) * halfWidth;
       const y = (vertex.y + 1) * halfHeight;
+      const z = (vertex.z + 1) * halfHeight;
 
-      screenCoordinates.push({ x, y });
+      screenCoordinates.push({ x, y, z });
       worldCoordinates.push(vertex);
     }
 
@@ -239,7 +282,8 @@ const drawModel = (model) => {
         screenCoordinates[1],
         screenCoordinates[2],
         ctx,
-        intensityToHexColor(intensity * 255)
+        intensityToHexColor(intensity * 255),
+        zBuffer
       );
     }
   }
